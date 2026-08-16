@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#111827">
+<meta name="description" content="GPS Land Survey - survey lokasi dan tanah">
+<title>GPS Land Survey</title>
+<link rel="manifest" href="data:application/manifest+json,%7B%22name%22%3A%22GPS%20Land%20Survey%22%2C%22short_name%22%3A%22Land%20Survey%22%2C%22start_url%22%3A%22.%22%2C%22display%22%3A%22standalone%22%2C%22theme_color%22%3A%22%23111827%22%2C%22background_color%22%3A%22%23f3f4f6%22%7D">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f3f4f6;color:#111827;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+header{height:64px;background:#111827;color:#fff;display:flex;align-items:center;justify-content:space-between;padding:0 16px;position:sticky;top:0;z-index:1000}
+header h1{font-size:18px;margin:0}header p{font-size:12px;margin:2px 0 0;color:#cbd5e1}
+button{border:1px solid #d1d5db;background:#fff;border-radius:10px;padding:11px 13px;font-weight:600;color:#111827}
+button:disabled{opacity:.45}button.primary{background:#111827;color:#fff;border-color:#111827}
+#newSurvey{font-size:22px;padding:5px 11px;background:#374151;color:#fff;border:0}
+.map{height:52vh;min-height:360px;position:relative;background:#ddd}.map #map{height:100%}
+#gpsStatus{position:absolute;z-index:500;left:12px;top:12px;background:#fff;padding:7px 10px;border-radius:999px;box-shadow:0 2px 10px #0002;font-size:12px;font-weight:700}
+#locate{position:absolute;z-index:500;right:12px;bottom:14px;border-radius:50%;width:52px;height:52px;font-size:21px;box-shadow:0 2px 10px #0003}
+.panel,.card{background:#fff;padding:14px;margin-top:10px;box-shadow:0 1px 4px #0001}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.grid div{min-width:0}.grid small,.metrics small{display:block;color:#6b7280;font-size:11px}.grid b{display:block;font-size:13px;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
+.row{display:flex;gap:8px;margin-top:10px}.row>*{flex:1}.primary{min-height:45px}
+.title{display:flex;align-items:center;justify-content:space-between}.title h2{font-size:16px;margin:0}.title button{padding:6px 9px;font-size:12px}
+.metrics{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}.metrics b{font-size:20px;display:block;margin-top:3px}
+.point{border-top:1px solid #e5e7eb;padding:12px 0}.point:first-child{border-top:0}.point-head{display:flex;justify-content:space-between;gap:8px}.point-name{font-weight:800}.point-coord{font-family:ui-monospace,monospace;font-size:12px;color:#374151;margin-top:4px}.point-meta{font-size:11px;color:#6b7280;margin-top:3px}.point-actions{display:flex;gap:6px;margin-top:7px}.point-actions button{padding:6px 8px;font-size:11px}
+.empty{color:#6b7280;text-align:center;padding:18px 5px;font-size:13px}.hidden{display:none!important}
+.note-card label{font-weight:700;font-size:13px}.note-card textarea{width:100%;margin-top:8px;border:1px solid #d1d5db;border-radius:10px;padding:10px;font:inherit;resize:vertical}
+#toast{position:fixed;z-index:2000;left:50%;bottom:24px;transform:translateX(-50%);background:#111827;color:#fff;padding:10px 14px;border-radius:10px;font-size:13px;opacity:0;pointer-events:none;transition:.2s;max-width:90%;text-align:center}#toast.show{opacity:1}
+.modal{position:fixed;inset:0;background:#0008;z-index:3000;display:flex;align-items:center;justify-content:center;padding:20px}.dialog{background:#fff;border-radius:16px;padding:18px;width:min(420px,100%)}.dialog h2{margin:0 0 12px;font-size:18px}.dialog input{width:100%;padding:12px;border:1px solid #d1d5db;border-radius:10px;font:inherit}.dialog .row{margin-top:14px}
+.leaflet-control-attribution{font-size:9px}
+</style>
+</head>
+<body>
+<header><div><h1>GPS Land Survey</h1><p id="surveyTitle">Survey Baru</p></div><button id="newSurvey">＋</button></header>
+<main>
+<section class="map"><div id="map"></div><span id="gpsStatus">GPS belum aktif</span><button id="locate">🎯</button></section>
+<section class="panel">
+<div class="grid">
+<div><small>Latitude</small><b id="lat">—</b></div><div><small>Longitude</small><b id="lng">—</b></div>
+<div><small>Accuracy</small><b id="acc">—</b></div><div><small>Altitude</small><b id="alt">—</b></div>
+</div>
+<div class="row"><button id="save" class="primary" disabled>📍 Simpan Titik</button><button id="area" disabled>📐 Hitung Area</button></div>
+<div class="row"><button id="copy" disabled>Copy Koordinat</button><button id="maps" disabled>Google Maps</button></div>
+</section>
+<section id="areaBox" class="card hidden"><div class="title"><h2>Hasil Area</h2><button id="resetArea">Reset</button></div><div class="metrics"><div><small>Luas</small><b id="areaValue">—</b></div><div><small>Keliling</small><b id="perimeter">—</b></div></div></section>
+<section class="card"><div class="title"><h2>Titik Survey <span id="count">0</span></h2><button id="export" disabled>Export CSV</button></div><div id="points" class="empty">Belum ada titik.</div></section>
+<section class="card note-card"><label for="note">Catatan survey</label><textarea id="note" rows="3" placeholder="Contoh: akses jalan dari utara, ada patok beton..."></textarea></section>
+</main>
+<div id="toast"></div>
+<div id="modal" class="modal hidden"><div class="dialog"><h2>Survey Baru</h2><input id="name" placeholder="Nama survey" maxlength="80"><div class="row"><button id="cancel">Batal</button><button id="confirm" class="primary">Simpan</button></div></div></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+(() => {
+const $=id=>document.getElementById(id);
+const STORAGE='gps-land-survey-v1';
+let state=JSON.parse(localStorage.getItem(STORAGE)||'null')||{name:'Survey Baru',note:'',points:[]};
+let current=null,currentMarker=null,polygon=null,pointMarkers=[];
+const map=L.map('map').setView([-7.8,110.37],12);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap contributors'}).addTo(map);
+
+function saveState(){localStorage.setItem(STORAGE,JSON.stringify(state));}
+function toast(msg){$('toast').textContent=msg;$('toast').classList.add('show');setTimeout(()=>$('toast').classList.remove('show'),2200);}
+function fmt(n){return Number(n).toFixed(8);}
+function render(){
+ $('surveyTitle').textContent=state.name;
+ $('note').value=state.note;
+ $('count').textContent=state.points.length;
+ $('export').disabled=!state.points.length;
+ $('area').disabled=state.points.length<3;
+ $('points').className=state.points.length?'':'empty';
+ if(!state.points.length){$('points').textContent='Belum ada titik.'}
+ else $('points').innerHTML=state.points.map((p,i)=>`<div class="point"><div class="point-head"><span class="point-name">P${i+1} — ${escapeHtml(p.name||'Titik '+(i+1))}</span><button onclick="removePoint(${i})">Hapus</button></div><div class="point-coord">${fmt(p.lat)}, ${fmt(p.lng)}</div><div class="point-meta">Accuracy ±${p.acc?Number(p.acc).toFixed(1):'?'} m · ${new Date(p.time).toLocaleString('id-ID')}</div><div class="point-actions"><button onclick="focusPoint(${i})">🎯 Fokus</button><button onclick="copyPoint(${i})">📋 Copy</button><button onclick="openMaps(${i})">🗺️ Maps</button></div></div>`).join('');
+ pointMarkers.forEach(m=>map.removeLayer(m));pointMarkers=[];
+ state.points.forEach((p,i)=>{const m=L.marker([p.lat,p.lng]).addTo(map).bindPopup(`<b>P${i+1}</b><br>${fmt(p.lat)}, ${fmt(p.lng)}`);pointMarkers.push(m)});
+ if(polygon){map.removeLayer(polygon);polygon=null}
+}
+function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function updateCurrent(pos){
+ current={lat:pos.coords.latitude,lng:pos.coords.longitude,acc:pos.coords.accuracy,alt:pos.coords.altitude,time:Date.now()};
+ $('lat').textContent=fmt(current.lat);$('lng').textContent=fmt(current.lng);$('acc').textContent=current.acc?`±${current.acc.toFixed(1)} m`:'—';$('alt').textContent=current.alt==null?'—':`${current.alt.toFixed(1)} m`;
+ $('gpsStatus').textContent=`GPS ±${current.acc?current.acc.toFixed(1):'?'} m`;
+ $('save').disabled=false;$('copy').disabled=false;$('maps').disabled=false;
+ if(!currentMarker) currentMarker=L.marker([current.lat,current.lng],{zIndexOffset:1000}).addTo(map).bindPopup('Posisi GPS saat ini');
+ else currentMarker.setLatLng([current.lat,current.lng]);
+ map.setView([current.lat,current.lng],17);
+}
+function locate(){
+ if(!navigator.geolocation){toast('Browser tidak mendukung GPS');return}
+ $('gpsStatus').textContent='Mencari GPS…';
+ navigator.geolocation.getCurrentPosition(updateCurrent,e=>{ $('gpsStatus').textContent='GPS gagal';toast('GPS gagal: '+e.message)}, {enableHighAccuracy:true,timeout:15000,maximumAge:5000});
+}
+$('locate').onclick=locate;
+$('save').onclick=()=>{if(!current)return;state.points.push({...current,name:''});saveState();render();toast(`P${state.points.length} tersimpan`)};
+$('copy').onclick=()=>navigator.clipboard?.writeText(`${fmt(current.lat)}, ${fmt(current.lng)}`).then(()=>toast('Koordinat disalin')).catch(()=>toast(`${fmt(current.lat)}, ${fmt(current.lng)}`));
+$('maps').onclick=()=>window.open(`https://www.google.com/maps?q=${current.lat},${current.lng}`,'_blank');
+$('area').onclick=calculateArea;
+$('resetArea').onclick=()=>{$('areaBox').classList.add('hidden');if(polygon){map.removeLayer(polygon);polygon=null}};
+$('export').onclick=()=>{
+ const rows=[['point','name','latitude','longitude','accuracy_m','altitude_m','timestamp'],...state.points.map((p,i)=>[i+1,p.name||`P${i+1}`,p.lat,p.lng,p.acc??'',p.alt??'',new Date(p.time).toISOString()])];
+ const csv=rows.map(r=>r.map(v=>`"${String(v).replaceAll('"','""')}"`).join(',')).join('\\n');
+ const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download=`${state.name.replace(/[^a-z0-9_-]+/gi,'-')}.csv`;a.click();URL.revokeObjectURL(a.href);
+};
+$('note').oninput=e=>{state.note=e.target.value;saveState()};
+$('newSurvey').onclick=()=>{$('modal').classList.remove('hidden');$('name').value='';$('name').focus()};
+$('cancel').onclick=()=>$('modal').classList.add('hidden');
+$('confirm').onclick=()=>{state={name:$('name').value.trim()||'Survey Baru',note:'',points:[]};saveState();$('modal').classList.add('hidden');$('areaBox').classList.add('hidden');render();toast('Survey baru dibuat')};
+map.on('click',e=>{current={lat:e.latlng.lat,lng:e.latlng.lng,acc:null,alt:null,time:Date.now()};$('lat').textContent=fmt(current.lat);$('lng').textContent=fmt(current.lng);$('acc').textContent='Tap map';$('alt').textContent='—';$('save').disabled=false;$('copy').disabled=false;$('maps').disabled=false;if(currentMarker)map.removeLayer(currentMarker);currentMarker=L.marker([current.lat,current.lng]).addTo(map).bindPopup('Titik pilihan').openPopup();$('gpsStatus').textContent='Titik map dipilih';});
+window.removePoint=i=>{state.points.splice(i,1);saveState();render();$('areaBox').classList.add('hidden');toast('Titik dihapus')};
+window.focusPoint=i=>map.setView([state.points[i].lat,state.points[i].lng],19);
+window.copyPoint=i=>navigator.clipboard?.writeText(`${fmt(state.points[i].lat)}, ${fmt(state.points[i].lng)}`).then(()=>toast('Koordinat disalin'));
+window.openMaps=i=>window.open(`https://www.google.com/maps?q=${state.points[i].lat},${state.points[i].lng}`,'_blank');
+
+function calculateArea(){
+ if(state.points.length<3)return;
+ const pts=state.points.map(p=>[p.lat,p.lng]); if(polygon)map.removeLayer(polygon);
+ polygon=L.polygon(pts,{weight:3,fillOpacity:.2}).addTo(map);map.fitBounds(polygon.getBounds(),{padding:[20,20]});
+ const area=planarArea(pts), perimeter=planarPerimeter(pts);
+ $('areaValue').textContent=formatArea(area);$('perimeter').textContent=formatDistance(perimeter);$('areaBox').classList.remove('hidden');
+}
+const R=6371008.8, rad=x=>x*Math.PI/180;
+function xy(p,lat0){return [R*rad(p[1])*Math.cos(rad(lat0)),R*rad(p[0])]}
+function planarArea(pts){const lat0=pts.reduce((s,p)=>s+p[0],0)/pts.length,xypts=pts.map(p=>xy(p,lat0));let a=0;for(let i=0;i<xypts.length;i++){const j=(i+1)%xypts.length;a+=xypts[i][0]*xypts[j][1]-xypts[j][0]*xypts[i][1]}return Math.abs(a)/2}
+function planarPerimeter(pts){const lat0=pts.reduce((s,p)=>s+p[0],0)/pts.length,xypts=pts.map(p=>xy(p,lat0));let d=0;for(let i=0;i<xypts.length;i++){const j=(i+1)%xypts.length;d+=Math.hypot(xypts[i][0]-xypts[j][0],xypts[i][1]-xypts[j][1])}return d}
+function formatArea(a){return a>=10000?`${(a/10000).toFixed(3)} ha`:`${a.toFixed(1)} m²`}
+function formatDistance(d){return d>=1000?`${(d/1000).toFixed(3)} km`:`${d.toFixed(1)} m`}
+render();
+})();
+</script>
+</body>
+</html>
