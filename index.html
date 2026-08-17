@@ -22,18 +22,81 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 const $=s=>document.querySelector(s), toast=m=>{let t=$('#toast');t.textContent=m;t.classList.add('show');clearTimeout(window.tt);window.tt=setTimeout(()=>t.classList.remove('show'),2200)};
-const KEY='gps-land-surveys-v2';let db=JSON.parse(localStorage.getItem(KEY)||'{}');db.surveys=db.surveys||[];let current=db.surveys.find(x=>x.id===db.currentId)||null;let live=null,markers=[],polygon=null,locked=false,modalMode=null,editPointId=null;
+const KEY='gps-land-surveys-v2';let db=JSON.parse(localStorage.getItem(KEY)||'{}');db.surveys=db.surveys||[];let current=db.surveys.find(x=>x.id===db.currentId)||null;let live=null,markers=[],polygon=null,liveMarker=null,locked=false,modalMode=null,editPointId=null;
 function persist(){db.surveys=db.surveys.filter(x=>x.id!==current?.id);if(current)db.surveys.unshift(current);db.currentId=current?.id||null;localStorage.setItem(KEY,JSON.stringify(db));renderHistory()}
 function newSurvey(){current={id:crypto.randomUUID(),title:'Survey Baru',createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),note:'',points:[],area:null,perimeter:null};locked=false;$('#surveyTitle').textContent=current.title;clearMap();render();persist()}
-const map=L.map('map',{zoomControl:true,maxZoom:22}).setView([-7.8,110.37],13);L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:22,attribution:'© OpenStreetMap contributors'}).addTo(map);
-map.on('click',e=>{if(locked)return;setLive(e.latlng.lat,e.latlng.lng,null,'Map');});
-function setLive(lat,lng,accuracy=null,source='GPS',alt=null){live={lat,lng,accuracy,source,alt};$('#lat').textContent=lat.toFixed(8);$('#lng').textContent=lng.toFixed(8);$('#acc').textContent=accuracy==null?'—':'±'+accuracy.toFixed(1)+' m';$('#alt').textContent=alt==null?'—':alt.toFixed(1)+' m';$('#badge').textContent=source==='GPS'?(accuracy?'GPS ±'+accuracy.toFixed(1)+' m':'GPS aktif'):'Titik map';$('#savePoint').disabled=locked;$('#copy').disabled=false;$('#maps').disabled=false;map.setView([lat,lng],Math.max(map.getZoom(),19));}
+const map=L.map('map',{zoomControl:true,maxZoom:22}).setView([-7.8,110.37],13);L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:22,maxNativeZoom:19,attribution:'© OpenStreetMap contributors'}).addTo(map);
+map.on('click',e=>{if(locked){toast('Survey sedang dikunci');return;}setLive(e.latlng.lat,e.latlng.lng,null,'Map');toast('Pin dipilih — drag pin atau tekan Simpan Titik');});
+map.on('zoomend',()=>{
+  const z=map.getZoom();
+  if(z>19) $('#badge').textContent += ' · zoom '+z+' (tile native 19)';
+});
+
+
+const surveyIcon = L.icon({
+  iconUrl:'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+  iconRetinaUrl:'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+  shadowUrl:'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+  iconSize:[25,41],
+  iconAnchor:[12,41],
+  popupAnchor:[1,-34],
+  shadowSize:[41,41]
+});
+
+function updateLiveMarker(){
+  if(!live) return;
+  const latlng=[live.lat,live.lng];
+  if(!liveMarker){
+    liveMarker=L.marker(latlng,{
+      icon:surveyIcon,
+      draggable:!locked,
+      zIndexOffset:1000
+    }).addTo(map);
+    liveMarker.bindTooltip('Titik yang dipilih',{permanent:true,direction:'top'});
+    liveMarker.on('dragend',()=>{
+      if(locked) return;
+      const q=liveMarker.getLatLng();
+      live.lat=q.lat;
+      live.lng=q.lng;
+      live.source='Manual';
+      live.accuracy=null;
+      updateLiveInfo();
+      toast('Posisi pin diperbarui');
+    });
+  }else{
+    liveMarker.setLatLng(latlng);
+    liveMarker.dragging[locked?'disable':'enable']();
+  }
+}
+
+function updateLiveInfo(){
+  $('#lat').textContent=live.lat.toFixed(8);
+  $('#lng').textContent=live.lng.toFixed(8);
+  $('#acc').textContent=live.accuracy==null?'—':'±'+live.accuracy.toFixed(1)+' m';
+  $('#alt').textContent=live.alt==null?'—':live.alt.toFixed(1)+' m';
+  $('#badge').textContent=live.source==='GPS'
+    ?(live.accuracy?'GPS ±'+live.accuracy.toFixed(1)+' m':'GPS aktif')
+    :'Titik map';
+  $('#savePoint').disabled=locked;
+  $('#copy').disabled=false;
+  $('#maps').disabled=false;
+  updateLiveMarker();
+}
+
+function setLive(lat,lng,accuracy=null,source='GPS',alt=null){
+  live={lat,lng,accuracy,source,alt};
+  updateLiveInfo();
+  map.setView([lat,lng],Math.max(map.getZoom(),19));
+}
 function locate(){if(!navigator.geolocation)return toast('Browser tidak mendukung GPS');$('#badge').textContent='Mencari GPS…';navigator.geolocation.getCurrentPosition(p=>{setLive(p.coords.latitude,p.coords.longitude,p.coords.accuracy,'GPS',p.coords.altitude);},e=>{toast('GPS gagal: '+e.message);$('#badge').textContent='GPS gagal'},{enableHighAccuracy:true,timeout:20000,maximumAge:0})}
 function clearMap(){markers.forEach(m=>map.removeLayer(m));markers=[];if(polygon)map.removeLayer(polygon);polygon=null}
 function pointPopup(p){return `<b>${esc(p.title)}</b><br>${p.lat.toFixed(8)}, ${p.lng.toFixed(8)}<br>±${p.accuracy==null?'—':p.accuracy.toFixed(1)+' m'}`}
 function render(){if(!current)return;$('#surveyTitle').textContent=current.title;$('#note').value=current.note||'';$('#count').textContent=current.points.length;$('#empty').classList.toggle('hidden',current.points.length>0);$('#finish').disabled=current.points.length<3||locked;$('#csv').disabled=!current.points.length;$('#points').innerHTML=current.points.map((p,i)=>`<div class="item"><div><strong>${i+1}. ${esc(p.title)}</strong><div class="muted">${p.lat.toFixed(8)}, ${p.lng.toFixed(8)} · ±${p.accuracy==null?'—':p.accuracy.toFixed(1)+' m'}${p.adjusted?' · adjusted':''}</div></div><div class="item-actions"><button class="btn" data-focus="${p.id}">🎯</button><button class="btn" data-edit="${p.id}">✏️</button><button class="btn danger" data-del="${p.id}">🗑️</button></div></div>`).join('');clearMap();current.points.forEach((p,i)=>{let m=L.marker([p.lat,p.lng],{draggable:!locked}).addTo(map).bindTooltip(p.title,{permanent:true,direction:'top'}).bindPopup(pointPopup(p));m.on('dragend',e=>{if(locked)return;let q=e.target.getLatLng();p.lat=q.lat;p.lng=q.lng;p.adjusted=true;p.updatedAt=new Date().toISOString();current.updatedAt=p.updatedAt;render();persist();toast(p.title+' diperbarui')});markers.push(m)});if(current.area&&current.points.length>=3){polygon=L.polygon(current.points.map(p=>[p.lat,p.lng]),{color:'#111827',weight:3,fillOpacity:.18}).addTo(map);$('#area').textContent=formatArea(current.area);$('#perimeter').textContent=formatDist(current.perimeter);$('#areaCard').classList.remove('hidden')}else $('#areaCard').classList.add('hidden')}
 function savePoint(){if(!live||locked)return;modalMode='point';$('#modalTitle').textContent='Simpan Titik';$('#nameLabel').classList.add('hidden');$('#nameInput').classList.add('hidden');$('#pointLabel').classList.remove('hidden');$('#pointInput').classList.remove('hidden');$('#pointInput').value='P'+(current.points.length+1);$('#modal').classList.remove('hidden');setTimeout(()=>$('#pointInput').focus(),50)}
-function confirmModal(){if(modalMode==='survey'){let n=$('#nameInput').value.trim();if(n)current.title=n;current.updatedAt=new Date().toISOString();closeModal();render();persist();return}let title=$('#pointInput').value.trim()||'P'+(current.points.length+1);let p={id:crypto.randomUUID(),title,lat:live.lat,lng:live.lng,accuracy:live.accuracy,altitude:live.alt,source:live.source,adjusted:false,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};current.points.push(p);current.updatedAt=p.createdAt;closeModal();render();persist();toast(title+' tersimpan')}
+function confirmModal(){if(modalMode==='survey'){let n=$('#nameInput').value.trim();if(n)current.title=n;current.updatedAt=new Date().toISOString();closeModal();render();persist();return}let title=$('#pointInput').value.trim()||'P'+(current.points.length+1);let p={id:crypto.randomUUID(),title,lat:live.lat,lng:live.lng,accuracy:live.accuracy,altitude:live.alt,source:live.source,adjusted:false,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};current.points.push(p);current.updatedAt=p.createdAt;
+if(liveMarker){map.removeLayer(liveMarker);liveMarker=null;}
+live=null;
+closeModal();render();persist();toast(title+' tersimpan')}
 function editPoint(id){let p=current.points.find(x=>x.id===id);if(!p)return;editPointId=id;modalMode='edit';$('#modalTitle').textContent='Edit Titik';$('#nameLabel').classList.add('hidden');$('#nameInput').classList.add('hidden');$('#pointLabel').classList.remove('hidden');$('#pointInput').classList.remove('hidden');$('#pointInput').value=p.title;$('#modal').classList.remove('hidden');setTimeout(()=>$('#pointInput').focus(),50)}
 function finishArea(){if(current.points.length<3||locked)return;current.area=geodesicArea(current.points);current.perimeter=calcPerimeter(current.points);current.updatedAt=new Date().toISOString();render();persist();map.fitBounds(polygon.getBounds(),{padding:[20,20]});toast('Area berhasil dihitung')}
 function geodesicArea(ps){const R=6378137;let s=0;for(let i=0;i<ps.length;i++){let a=ps[i],b=ps[(i+1)%ps.length];s+=(rad(b.lng)-rad(a.lng))*(2+Math.sin(rad(a.lat))+Math.sin(rad(b.lat)))}return Math.abs(s*R*R/2)}function rad(x){return x*Math.PI/180}function dist(a,b){let R=6378137,dlat=rad(b.lat-a.lat),dlon=rad(b.lng-a.lng),q=Math.sin(dlat/2)**2+Math.cos(rad(a.lat))*Math.cos(rad(b.lat))*Math.sin(dlon/2)**2;return 2*R*Math.asin(Math.sqrt(q))}function calcPerimeter(ps){return ps.reduce((s,p,i)=>s+dist(p,ps[(i+1)%ps.length]),0)}function formatArea(a){return a<10000?a.toFixed(1)+' m²':(a/10000).toFixed(3)+' ha ('+a.toFixed(0)+' m²)'}function formatDist(d){return d<1000?d.toFixed(1)+' m':(d/1000).toFixed(3)+' km'}
@@ -41,7 +104,7 @@ function exportCSV(){let rows=[['survey','created_at','updated_at','area_m2','pe
 function exportImage(){if(!current.points.length)return;let c=document.createElement('canvas'),w=1200,h=850;c.width=w;c.height=h;let x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,w,h);x.fillStyle='#111827';x.font='bold 34px system-ui';x.fillText('GPS LAND SURVEY',50,55);x.font='bold 25px system-ui';x.fillText(current.title,50,95);x.font='18px system-ui';x.fillStyle='#4b5563';x.fillText(new Date(current.updatedAt).toLocaleString('id-ID'),50,125);x.fillStyle='#e5e7eb';x.fillRect(50,145,1100,2);let minLat=Math.min(...current.points.map(p=>p.lat)),maxLat=Math.max(...current.points.map(p=>p.lat)),minLng=Math.min(...current.points.map(p=>p.lng)),maxLng=Math.max(...current.points.map(p=>p.lng));let pad=90,mw=570,mh=360,scale=Math.min((mw-2*pad)/(maxLng-minLng||1),(mh-2*pad)/(maxLat-minLat||1));let xy=p=>[80+(p.lng-minLng)*scale,180+(maxLat-p.lat)*scale];x.fillStyle='#f8fafc';x.fillRect(50,165,mw,mh);if(current.points.length>=3){x.beginPath();current.points.forEach((p,i)=>{let [px,py]=xy(p);i?x.lineTo(px,py):x.moveTo(px,py)});x.closePath();x.fillStyle='#e5e7eb';x.fill();x.strokeStyle='#111827';x.lineWidth=4;x.stroke()}current.points.forEach((p,i)=>{let [px,py]=xy(p);x.beginPath();x.arc(px,py,9,0,Math.PI*2);x.fillStyle='#111827';x.fill();x.fillStyle='#111827';x.font='bold 17px system-ui';x.fillText(p.title,px+13,py-10)});x.fillStyle='#111827';x.font='bold 25px system-ui';x.fillText('Hasil Survey',670,200);x.font='20px system-ui';x.fillText('Luas: '+(current.area==null?'—':formatArea(current.area)),670,240);x.fillText('Keliling: '+(current.perimeter==null?'—':formatDist(current.perimeter)),670,275);x.fillText('Titik: '+current.points.length,670,310);x.font='15px system-ui';current.points.forEach((p,i)=>{let y=350+i*85;x.font='bold 16px system-ui';x.fillText((i+1)+'. '+p.title,670,y);x.font='14px system-ui';x.fillStyle='#4b5563';x.fillText(p.lat.toFixed(8)+', '+p.lng.toFixed(8),670,y+23);x.fillText('Accuracy: '+(p.accuracy==null?'—':p.accuracy.toFixed(1)+' m'),670,y+44);x.fillStyle='#111827'});x.font='13px system-ui';x.fillStyle='#6b7280';x.fillText('Catatan: '+(current.note||'-').slice(0,100),50,570);downloadCanvas(c,slug(current.title)+'.png');toast('Gambar survey dibuat')}
 function downloadCanvas(c,name){c.toBlob(b=>download(b,name),'image/png')}function download(blob,name){let a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}function slug(s){return s.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')||'survey'}function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]))}
 function renderHistory(){let arr=db.surveys||[];$('#emptyHistory').classList.toggle('hidden',arr.length>0);$('#history').innerHTML=arr.map(s=>`<div class="item"><div><strong>${esc(s.title)}</strong><div class="muted">${new Date(s.updatedAt||s.createdAt).toLocaleString('id-ID')} · ${s.points.length} titik${s.area?` · ${formatArea(s.area)}`:''}</div></div><div class="item-actions"><button class="btn" data-open="${s.id}">Open</button><button class="btn danger" data-history-del="${s.id}">🗑️</button></div></div>`).join('')}
-function openSurvey(id){let s=db.surveys.find(x=>x.id===id);if(!s)return;current=JSON.parse(JSON.stringify(s));db.currentId=id;locked=false;render();persist();toast('Survey dibuka')}
+function openSurvey(id){let s=db.surveys.find(x=>x.id===id);if(!s)return;if(liveMarker){map.removeLayer(liveMarker);liveMarker=null;}live=null;current=JSON.parse(JSON.stringify(s));db.currentId=id;locked=false;render();persist();toast('Survey dibuka')}
 function closeModal(){$('#modal').classList.add('hidden');modalMode=null;editPointId=null}
 $('#locate').onclick=locate;$('#savePoint').onclick=savePoint;$('#finish').onclick=finishArea;$('#csv').onclick=exportCSV;$('#imageExport').onclick=exportImage;$('#copy').onclick=async()=>{if(live){await navigator.clipboard.writeText(live.lat.toFixed(8)+', '+live.lng.toFixed(8));toast('Koordinat disalin')}};$('#maps').onclick=()=>live&&window.open('https://www.google.com/maps?q='+live.lat+','+live.lng,'_blank');$('#newBtn').onclick=()=>{if(current&&current.points.length&&!confirm('Buat survey baru? Survey lama tetap masuk history.'))return;current={id:crypto.randomUUID(),title:'Survey Baru',createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),note:'',points:[],area:null,perimeter:null};db.currentId=current.id;locked=false;render();persist();modalMode='survey';$('#modalTitle').textContent='Survey Baru';$('#nameLabel').classList.remove('hidden');$('#nameInput').classList.remove('hidden');$('#pointLabel').classList.add('hidden');$('#pointInput').classList.add('hidden');$('#nameInput').value='';$('#modal').classList.remove('hidden');setTimeout(()=>$('#nameInput').focus(),50)};$('#cancel').onclick=closeModal;$('#confirm').onclick=()=>{if(modalMode==='edit'){let p=current.points.find(x=>x.id===editPointId);if(p){p.title=$('#pointInput').value.trim()||p.title;p.updatedAt=new Date().toISOString();current.updatedAt=p.updatedAt}closeModal();render();persist();return}confirmModal()};$('#note').oninput=e=>{current.note=e.target.value;current.updatedAt=new Date().toISOString();persist()};$('#clearArea').onclick=()=>{current.area=null;current.perimeter=null;if(polygon)map.removeLayer(polygon);polygon=null;$('#areaCard').classList.add('hidden');persist()};$('#lockBtn').onclick=()=>{locked=!locked;$('#lockBtn').textContent=locked?'🔓 Unlock Survey':'🔒 Lock Survey';render();toast(locked?'Survey dikunci':'Survey dibuka')};$('#points').onclick=e=>{let f=e.target.closest('[data-focus]'),ed=e.target.closest('[data-edit]'),d=e.target.closest('[data-del]');if(f){let p=current.points.find(x=>x.id===f.dataset.focus);if(p)map.setView([p.lat,p.lng],21)}if(ed)editPoint(ed.dataset.edit);if(d&&confirm('Hapus titik ini?')){current.points=current.points.filter(x=>x.id!==d.dataset.del);current.area=null;current.perimeter=null;current.updatedAt=new Date().toISOString();render();persist()}};$('#history').onclick=e=>{let o=e.target.closest('[data-open]'),d=e.target.closest('[data-history-del]');if(o)openSurvey(o.dataset.open);if(d&&confirm('Hapus survey dari history?')){db.surveys=db.surveys.filter(s=>s.id!==d.dataset.historyDel);if(current?.id===d.dataset.historyDel){current=null;db.currentId=null}localStorage.setItem(KEY,JSON.stringify(db));renderHistory();if(!current)newSurvey()}};
 if(!current)newSurvey();else{db.currentId=current.id;render();renderHistory()}
