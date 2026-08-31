@@ -276,7 +276,41 @@ async function exportImage(){
  const mapEl=$('#map');
  const hide=mapEl.querySelectorAll('.leaflet-control,.locate,.map-btn,.badge');
  hide.forEach(e=>e.style.visibility='hidden');
+
+ // html2canvas can miss Leaflet's SVG polygon depending on browser/layer state.
+ // Draw a temporary polygon directly onto a canvas overlay so the exported image
+ // always contains the exact same survey boundary.
+ let exportOverlay=null;
  try{
+  if(current.points.length>=3){
+   exportOverlay=document.createElement('canvas');
+   const rect=mapEl.getBoundingClientRect();
+   const dpr=2;
+   exportOverlay.width=Math.round(rect.width*dpr);
+   exportOverlay.height=Math.round(rect.height*dpr);
+   exportOverlay.style.cssText='position:absolute;inset:0;width:100%;height:100%;z-index:450;pointer-events:none;';
+   mapEl.appendChild(exportOverlay);
+
+   const ec=exportOverlay.getContext('2d');
+   ec.setTransform(dpr,0,0,dpr,0,0);
+   const pts=current.points.map(p=>map.latLngToContainerPoint([p.lat,p.lng]));
+   ec.beginPath();
+   pts.forEach((pt,i)=>i?ec.lineTo(pt.x,pt.y):ec.moveTo(pt.x,pt.y));
+   ec.closePath();
+   ec.fillStyle='rgba(17,24,39,0.22)';
+   ec.fill();
+   ec.lineWidth=4;
+   ec.strokeStyle='#111827';
+   ec.stroke();
+
+   // Add small vertex circles to make the boundary unmistakable in the export.
+   ec.fillStyle='#ffffff';
+   ec.strokeStyle='#111827';
+   pts.forEach(pt=>{
+    ec.beginPath();ec.arc(pt.x,pt.y,5,0,Math.PI*2);ec.fill();ec.stroke();
+   });
+  }
+
   const shot=await html2canvas(mapEl,{useCORS:true,allowTaint:false,backgroundColor:'#fff',scale:2,logging:false});
   const w=1400,h=Math.max(1050,720+current.points.length*62);
   const c=document.createElement('canvas');c.width=w;c.height=h;const x=c.getContext('2d');
@@ -301,7 +335,10 @@ async function exportImage(){
   x.font='14px system-ui';x.fillStyle='#4b5563';x.fillText((current.note||'-').slice(0,180),50,ny+25);
   downloadCanvas(c,slug(current.title)+'.png');toast('Gambar survey berhasil dibuat');
  }catch(e){console.error(e);toast('Gagal membuat gambar. Pastikan map sudah selesai loading.')}
- finally{hide.forEach(e=>e.style.visibility='')}
+ finally{
+  if(exportOverlay&&exportOverlay.parentNode)exportOverlay.parentNode.removeChild(exportOverlay);
+  hide.forEach(e=>e.style.visibility='')
+ }
 }
 function downloadCanvas(c,name){c.toBlob(b=>download(b,name),'image/png')}
 function download(blob,name){const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
