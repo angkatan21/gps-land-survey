@@ -272,16 +272,19 @@ function exportCSV(){
 }
 async function exportImage(){
  if(!current.points.length)return;
- toast('Menyiapkan gambar survey…');
+ toast('Menyiapkan laporan survey…');
+
  const mapEl=$('#map');
  const hide=mapEl.querySelectorAll('.leaflet-control,.locate,.map-btn,.badge');
  hide.forEach(e=>e.style.visibility='hidden');
 
- // html2canvas can miss Leaflet's SVG polygon depending on browser/layer state.
- // Draw a temporary polygon directly onto a canvas overlay so the exported image
- // always contains the exact same survey boundary.
  let exportOverlay=null;
  try{
+  // Ensure the current map view and imagery have a moment to settle.
+  await new Promise(r=>setTimeout(r,250));
+
+  // Explicitly paint the polygon on top of the map before html2canvas.
+  // This avoids browser-dependent Leaflet SVG capture issues.
   if(current.points.length>=3){
    exportOverlay=document.createElement('canvas');
    const rect=mapEl.getBoundingClientRect();
@@ -294,52 +297,174 @@ async function exportImage(){
    const ec=exportOverlay.getContext('2d');
    ec.setTransform(dpr,0,0,dpr,0,0);
    const pts=current.points.map(p=>map.latLngToContainerPoint([p.lat,p.lng]));
+
    ec.beginPath();
    pts.forEach((pt,i)=>i?ec.lineTo(pt.x,pt.y):ec.moveTo(pt.x,pt.y));
    ec.closePath();
-   ec.fillStyle='rgba(17,24,39,0.22)';
+   ec.fillStyle='rgba(37,99,235,0.22)';
    ec.fill();
    ec.lineWidth=4;
-   ec.strokeStyle='#111827';
+   ec.strokeStyle='#1d4ed8';
    ec.stroke();
 
-   // Add small vertex circles to make the boundary unmistakable in the export.
-   ec.fillStyle='#ffffff';
-   ec.strokeStyle='#111827';
+   ec.fillStyle='#fff';
+   ec.strokeStyle='#1d4ed8';
    pts.forEach(pt=>{
-    ec.beginPath();ec.arc(pt.x,pt.y,5,0,Math.PI*2);ec.fill();ec.stroke();
+    ec.beginPath();ec.arc(pt.x,pt.y,6,0,Math.PI*2);ec.fill();ec.stroke();
    });
   }
 
-  const shot=await html2canvas(mapEl,{useCORS:true,allowTaint:false,backgroundColor:'#fff',scale:2,logging:false});
-  const w=1400,h=Math.max(1050,720+current.points.length*62);
-  const c=document.createElement('canvas');c.width=w;c.height=h;const x=c.getContext('2d');
-  x.fillStyle='#fff';x.fillRect(0,0,w,h);
-  x.fillStyle='#111827';x.font='bold 34px system-ui';x.fillText('GPS LAND SURVEY',50,55);
-  x.font='bold 26px system-ui';x.fillText(current.title,50,95);
-  x.font='16px system-ui';x.fillStyle='#4b5563';
-  x.fillText(new Date(current.updatedAt).toLocaleString('id-ID'),50,122);
-  x.fillText('Layer: '+(satellite?'Satellite':'Street Map'),50,148);
-  x.drawImage(shot,50,175,820,500);
-  x.fillStyle='#111827';x.font='bold 24px system-ui';x.fillText('Hasil Survey',920,220);
-  x.font='19px system-ui';x.fillText('Luas: '+(current.area==null?'—':formatArea(current.area)),920,260);
-  x.fillText('Keliling: '+(current.perimeter==null?'—':formatDist(current.perimeter)),920,295);
-  x.fillText('Titik: '+current.points.length,920,330);
-  x.font='bold 17px system-ui';x.fillText('Daftar Titik',920,375);
-  current.points.forEach((p,i)=>{
-   const y=410+i*62;x.font='bold 15px system-ui';x.fillText((i+1)+'. '+p.title,920,y);
-   x.font='13px system-ui';x.fillStyle='#4b5563';x.fillText(p.lat.toFixed(8)+', '+p.lng.toFixed(8),920,y+20);
-   x.fillText('±'+(p.accuracy==null?'—':p.accuracy.toFixed(1)+' m')+(p.adjusted?' · adjusted':''),920,y+39);x.fillStyle='#111827';
+  const shot=await html2canvas(mapEl,{
+   useCORS:true,allowTaint:false,backgroundColor:'#fff',scale:2,logging:false
   });
-  const ny=Math.max(705,410+current.points.length*62);x.font='bold 16px system-ui';x.fillText('Catatan',50,ny);
-  x.font='14px system-ui';x.fillStyle='#4b5563';x.fillText((current.note||'-').slice(0,180),50,ny+25);
-  downloadCanvas(c,slug(current.title)+'.png');toast('Gambar survey berhasil dibuat');
- }catch(e){console.error(e);toast('Gagal membuat gambar. Pastikan map sudah selesai loading.')}
- finally{
+
+  // Professional landscape report.
+  const MAP_W=1000;
+  const mapRatio=mapEl.clientHeight/Math.max(1,mapEl.clientWidth);
+  const MAP_H=Math.round(MAP_W*mapRatio);
+  const INFO_W=570;
+  const PAD=46;
+  const HEADER_H=155;
+  const FOOTER_H=78;
+  const TABLE_H=Math.max(260,current.points.length*58+95);
+  const W=PAD+MAP_W+34+INFO_W+PAD;
+  const H=HEADER_H+MAP_H+34+TABLE_H+FOOTER_H;
+
+  const c=document.createElement('canvas');
+  c.width=W*2;c.height=H*2;
+  const x=c.getContext('2d');
+  x.scale(2,2);
+
+  // Background
+  x.fillStyle='#f8fafc';x.fillRect(0,0,W,H);
+
+  // Header
+  x.fillStyle='#0f172a';x.fillRect(0,0,W,HEADER_H);
+  x.fillStyle='#fff';x.font='700 34px system-ui,-apple-system,sans-serif';
+  x.fillText('GPS LAND SURVEY',PAD,52);
+  x.font='700 25px system-ui,-apple-system,sans-serif';
+  x.fillText(current.title||'Survey',PAD,92);
+  x.font='14px system-ui,-apple-system,sans-serif';
+  x.fillStyle='#cbd5e1';
+  x.fillText('Dokumentasi pengukuran berbasis GPS · WGS84',PAD,120);
+  x.textAlign='right';
+  x.fillText(new Date(current.updatedAt||Date.now()).toLocaleString('id-ID'),W-PAD,52);
+  x.fillText((satellite?'Satellite / World Imagery':'Street Map / OpenStreetMap'),W-PAD,78);
+  x.fillText('Generated from GPS Land Survey',W-PAD,104);
+  x.textAlign='left';
+
+  // Map frame
+  const mx=PAD,my=HEADER_H;
+  x.fillStyle='#fff';x.fillRect(mx-2,my-2,MAP_W+4,MAP_H+4);
+  x.drawImage(shot,mx,my,MAP_W,MAP_H);
+
+  // Draw export-only map annotations: north arrow + scale bar.
+  const center=map.getCenter();
+  const zoom=map.getZoom();
+  const metersPerPixel=(Math.cos(center.lat*Math.PI/180)*2*Math.PI*6378137)/(256*Math.pow(2,zoom));
+  const targetPx=150;
+  const rawMeters=targetPx*metersPerPixel;
+  const pow=Math.pow(10,Math.floor(Math.log10(Math.max(rawMeters,1))));
+  const candidates=[1,2,5,10];
+  let niceMeters=candidates[0]*pow;
+  candidates.forEach(n=>{if(n*pow<=rawMeters)niceMeters=n*pow});
+  const scalePx=niceMeters/metersPerPixel;
+
+  // North arrow
+  const nx=mx+MAP_W-66, ny=my+68;
+  x.save();x.translate(nx,ny);
+  x.fillStyle='#fff';x.strokeStyle='#111827';x.lineWidth=2;
+  x.beginPath();x.arc(0,0,30,0,Math.PI*2);x.fill();x.stroke();
+  x.fillStyle='#111827';
+  x.beginPath();x.moveTo(0,-21);x.lineTo(8,12);x.lineTo(0,7);x.lineTo(-8,12);x.closePath();x.fill();
+  x.font='700 15px system-ui';x.textAlign='center';x.fillText('N',0,-37);x.restore();
+
+  // Scale bar
+  const sx=mx+28, sy=my+MAP_H-34;
+  x.strokeStyle='#111827';x.fillStyle='#111827';x.lineWidth=3;
+  x.beginPath();x.moveTo(sx,sy);x.lineTo(sx+scalePx,sy);x.stroke();
+  x.lineWidth=2;x.beginPath();x.moveTo(sx,sy-7);x.lineTo(sx,sy+7);x.moveTo(sx+scalePx,sy-7);x.lineTo(sx+scalePx,sy+7);x.stroke();
+  x.font='700 13px system-ui';x.fillText(niceMeters>=1000?(niceMeters/1000)+' km':niceMeters.toFixed(0)+' m',sx,sy-13);
+
+  // Info panel
+  const ix=PAD+MAP_W+34, iy=HEADER_H;
+  x.fillStyle='#fff';x.fillRect(ix,iy,INFO_W,MAP_H);
+  x.strokeStyle='#e2e8f0';x.lineWidth=1;x.strokeRect(ix,iy,INFO_W,MAP_H);
+  x.fillStyle='#0f172a';x.font='700 23px system-ui';x.fillText('RINGKASAN SURVEY',ix+25,iy+40);
+
+  const summary=[
+   ['Luas',current.area==null?'Belum dihitung':formatArea(current.area)],
+   ['Keliling',current.perimeter==null?'Belum dihitung':formatDist(current.perimeter)],
+   ['Jumlah titik',String(current.points.length)],
+   ['Layer',satellite?'Satellite':'Street Map'],
+   ['Koordinat', 'WGS84 · decimal degrees']
+  ];
+  let sy2=iy+78;
+  summary.forEach(([label,val])=>{
+   x.fillStyle='#64748b';x.font='12px system-ui';x.fillText(label.toUpperCase(),ix+25,sy2);
+   x.fillStyle='#0f172a';x.font='700 17px system-ui';x.fillText(val,ix+25,sy2+22);
+   sy2+=54;
+  });
+
+  x.fillStyle='#e2e8f0';x.fillRect(ix+25,sy2-13,INFO_W-50,1);
+  sy2+=18;
+  x.fillStyle='#0f172a';x.font='700 17px system-ui';x.fillText('Catatan',ix+25,sy2);
+  x.fillStyle='#475569';x.font='13px system-ui';
+  const note=(current.note||'—').replace(/\s+/g,' ').trim()||'—';
+  const noteLines=wrapCanvasText(x,note,INFO_W-50,20);
+  noteLines.slice(0,5).forEach((line,j)=>x.fillText(line,ix+25,sy2+24+j*19));
+
+  // Point table
+  const ty=HEADER_H+MAP_H+34;
+  x.fillStyle='#fff';x.fillRect(PAD,ty,W-PAD*2,TABLE_H);
+  x.strokeStyle='#e2e8f0';x.lineWidth=1;x.strokeRect(PAD,ty,W-PAD*2,TABLE_H);
+  x.fillStyle='#0f172a';x.font='700 20px system-ui';x.fillText('DAFTAR KOORDINAT TITIK',PAD+20,ty+32);
+
+  const cols=[PAD+20,PAD+70,PAD+355,PAD+595,PAD+835,PAD+1045];
+  const headers=['No','Title','Latitude','Longitude','Accuracy','Sumber'];
+  x.font='700 12px system-ui';x.fillStyle='#64748b';
+  headers.forEach((h,i)=>x.fillText(h,cols[i],ty+61));
+  x.strokeStyle='#cbd5e1';x.beginPath();x.moveTo(PAD+20,ty+72);x.lineTo(W-PAD-20,ty+72);x.stroke();
+
+  current.points.forEach((p,i)=>{
+   const yy=ty+98+i*58;
+   if(i%2===0){x.fillStyle='#f8fafc';x.fillRect(PAD+12,yy-21,W-PAD*2-24,48)}
+   x.fillStyle='#0f172a';x.font='700 13px system-ui';x.fillText(String(i+1),cols[0],yy);
+   x.font='600 13px system-ui';x.fillText(String(p.title).slice(0,27),cols[1],yy);
+   x.font='12px ui-monospace,SFMono-Regular,Menlo,monospace';x.fillText(p.lat.toFixed(8),cols[2],yy);
+   x.fillText(p.lng.toFixed(8),cols[3],yy);
+   x.font='12px system-ui';x.fillText(p.accuracy==null?'—':'±'+p.accuracy.toFixed(1)+' m',cols[4],yy);
+   x.fillText((p.source||'Map')+(p.adjusted?' · adjusted':''),cols[5],yy);
+  });
+
+  // Footer
+  const fy=H-FOOTER_H;
+  x.fillStyle='#0f172a';x.fillRect(0,fy,W,FOOTER_H);
+  x.fillStyle='#cbd5e1';x.font='12px system-ui';
+  x.fillText('Catatan: hasil bergantung pada akurasi GPS perangkat dan kualitas citra peta.',PAD,fy+27);
+  x.fillText('Dokumen ini untuk dokumentasi/survey lapangan, bukan pengganti pengukuran kadaster profesional.',PAD,fy+48);
+  x.textAlign='right';x.fillText('GPS Land Survey',W-PAD,fy+38);x.textAlign='left';
+
+  downloadCanvas(c,slug(current.title||'survey')+'-survey-report.png');
+  toast('Laporan survey berhasil dibuat');
+ }catch(e){
+  console.error(e);
+  toast('Gagal membuat laporan: '+(e.message||'unknown error'));
+ }finally{
   if(exportOverlay&&exportOverlay.parentNode)exportOverlay.parentNode.removeChild(exportOverlay);
-  hide.forEach(e=>e.style.visibility='')
+  hide.forEach(e=>e.style.visibility='');
  }
 }
+
+function wrapCanvasText(ctx,text,maxWidth,lineHeight){
+ const words=String(text).split(/\s+/),lines=[];let line='';
+ words.forEach(word=>{
+  const test=line?line+' '+word:word;
+  if(ctx.measureText(test).width>maxWidth&&line){lines.push(line);line=word}else line=test;
+ });
+ if(line)lines.push(line);return lines;
+}
+
 function downloadCanvas(c,name){c.toBlob(b=>download(b,name),'image/png')}
 function download(blob,name){const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
 function slug(s){return s.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')||'survey'}
