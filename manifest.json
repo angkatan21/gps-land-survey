@@ -1,0 +1,16 @@
+{
+  "name": "GPS Land Survey",
+  "short_name": "LandSurvey",
+  "description": "Web app ringan untuk membantu survey lokasi dan tanah menggunakan HP secara offline-first.",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#111827",
+  "theme_color": "#111827",
+  "icons": [
+    {
+      "src": "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
+      "sizes": "25x41",
+      "type": "image/png"
+    }
+  ]
+}

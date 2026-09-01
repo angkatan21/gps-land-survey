@@ -6,16 +6,21 @@
 <meta name="theme-color" content="#111827">
 <title>GPS Land Survey</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="manifest" href="manifest.json">
 <style>
 *{box-sizing:border-box}body{margin:0;background:#f3f4f6;color:#111827;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
-.top{height:62px;background:#111827;color:#fff;padding:9px 15px;display:flex;align-items:center;justify-content:space-between}.top h1{font-size:17px;margin:0}.top small{color:#cbd5e1}
-main{max-width:1000px;margin:auto}.map{height:52vh;min-height:360px;position:relative;background:#ddd}.map #map{height:100%}
+.top{height:calc(62px + env(safe-area-inset-top));background:#111827;color:#fff;padding:calc(9px + env(safe-area-inset-top)) 15px 9px 15px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:2000}.top h1{font-size:17px;margin:0}.top small{color:#cbd5e1}
+.map{height:52vh;min-height:360px;position:relative;background:#ddd}.map #map{height:100%}
 .btn{border:1px solid #d1d5db;background:#fff;border-radius:10px;padding:10px 12px;font-weight:700;cursor:pointer}.primary{background:#111827;color:#fff;border-color:#111827}.danger{color:#b91c1c}.icon{width:40px;height:40px;padding:0;font-size:21px}
-.badge{position:absolute;z-index:600;top:12px;left:12px;background:#111827e8;color:#fff;padding:7px 11px;border-radius:999px;font-size:12px}
-.map-btn{position:absolute;z-index:600;right:14px;bottom:72px;border:0;background:#fff;padding:10px 12px;border-radius:10px;box-shadow:0 3px 14px #0003;font-weight:700}.locate{position:absolute;z-index:600;right:14px;bottom:14px;border:0;background:#fff;width:48px;height:48px;border-radius:50%;box-shadow:0 3px 14px #0003;font-size:20px}
+.badge{position:absolute;z-index:600;top:12px;left:12px;background:#111827e8;color:#fff;padding:7px 11px;border-radius:999px;font-size:12px;transition:background .2s}
+.badge.acc-good{background:#15803de8}.badge.acc-mod{background:#b45309e8}.badge.acc-poor{background:#b91c1ce8}
+.map-btn{position:absolute;z-index:600;right:14px;bottom:72px;border:0;background:#fff;padding:9px 12px;border-radius:10px;box-shadow:0 3px 14px #0003;font-weight:700;font-size:13px}.locate{position:absolute;z-index:600;right:14px;bottom:14px;border:0;background:#fff;width:48px;height:48px;border-radius:50%;box-shadow:0 3px 14px #0003;font-size:20px}
 .panel,.card{background:#fff;padding:14px 16px;margin-top:8px}.grid,.metrics{display:grid;grid-template-columns:repeat(2,1fr);gap:9px}.cell,.metric{background:#f8fafc;padding:9px;border-radius:10px}.cell span,.metric span{display:block;font-size:11px;color:#6b7280}.cell strong{font-size:13px}.metric strong{display:block;font-size:18px;margin-top:3px}
 .actions{display:grid;grid-template-columns:1.4fr 1fr;gap:9px;margin-top:10px}.actions.two{grid-template-columns:1fr 1fr}.header{display:flex;justify-content:space-between;align-items:center;margin-bottom:9px}.header h2{font-size:15px;margin:0}
 .list{display:grid;gap:8px}.item{border:1px solid #e5e7eb;border-radius:12px;padding:11px;display:flex;justify-content:space-between;gap:10px}.item strong{font-size:13px}.muted{font-size:11px;color:#6b7280}.item-actions{display:flex;gap:6px;align-items:center}.item-actions .btn{padding:7px}.empty{color:#6b7280;font-size:13px;padding:10px 0}
+.seg-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:6px;margin-top:8px}
+.seg-item{background:#f1f5f9;padding:7px 10px;border-radius:8px;font-size:12px;border-left:3px solid #2563eb}
+.edge-label-icon{background:#ffffffea;border:1px solid #1e293b;border-radius:5px;padding:2px 5px;font-size:11px;font-weight:700;color:#0f172a;box-shadow:0 1px 4px #0003;white-space:nowrap;text-align:center}
 .textarea,.input{width:100%;border:1px solid #d1d5db;border-radius:10px;padding:10px;font:inherit}.textarea{resize:vertical}
 .modal{position:fixed;inset:0;background:#0008;z-index:3000;display:grid;place-items:center;padding:18px}.box{background:#fff;width:min(430px,100%);border-radius:16px;padding:18px}.box h2{margin:0 0 14px;font-size:18px}.box label{display:block;font-size:12px;font-weight:700;margin:10px 0 5px}.modal-actions{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:14px}
 .toast{position:fixed;bottom:20px;left:50%;transform:translate(-50%,20px);opacity:0;z-index:5000;background:#111827;color:#fff;padding:10px 14px;border-radius:10px;font-size:13px;transition:.2s}.toast.show{opacity:1;transform:translate(-50%,0)}
@@ -54,12 +59,16 @@ main{max-width:1000px;margin:auto}.map{height:52vh;min-height:360px;position:rel
 </section>
 
 <section class="card hidden" id="areaCard">
-  <div class="header"><h2>Hasil Area</h2><button class="btn" id="clearArea">Reset</button></div>
+  <div class="header"><h2>Hasil Area & Segmen</h2><button class="btn" id="clearArea">Reset</button></div>
   <div class="metrics">
     <div class="metric"><span>Luas</span><strong id="area">—</strong></div>
     <div class="metric"><span>Keliling</span><strong id="perimeter">—</strong></div>
   </div>
-  <div class="actions two">
+  <div style="margin-top:10px">
+    <span style="font-size:12px;font-weight:700;color:#475569">Jarak Per Sisi (Segmen):</span>
+    <div id="segmentList" class="seg-list"></div>
+  </div>
+  <div class="actions two" style="margin-top:12px">
     <button class="btn primary" id="imageExport">📸 Export Gambar</button>
     <button class="btn" id="lockBtn">🔒 Lock Survey</button>
   </div>
@@ -104,7 +113,7 @@ const toast=m=>{const t=$('#toast');t.textContent=m;t.classList.add('show');clea
 const KEY='gps-land-surveys-v3';
 let db=JSON.parse(localStorage.getItem(KEY)||'{"surveys":[]}');
 let current=db.surveys.find(x=>x.id===db.currentId)||null;
-let live=null,liveMarker=null,markers=[],polygon=null,locked=false,modalMode=null,editPointId=null,satellite=false;
+let live=null,liveMarker=null,accCircle=null,watchId=null,markers=[],edgeMarkers=[],polygon=null,locked=false,modalMode=null,editPointId=null;
 
 const surveyIcon=L.icon({
  iconUrl:'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
@@ -113,20 +122,27 @@ const surveyIcon=L.icon({
  iconSize:[25,41],iconAnchor:[12,41],popupAnchor:[1,-34],shadowSize:[41,41]
 });
 
-const map=L.map('map',{zoomControl:true,maxZoom:22}).setView([-7.8,110.37],13);
-const street=L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
- maxZoom:22,maxNativeZoom:19,crossOrigin:true,attribution:'© OpenStreetMap contributors'
-}).addTo(map);
-const imagery=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{
- maxZoom:22,maxNativeZoom:19,crossOrigin:true,attribution:'Tiles © Esri'
-});
+const tileLayers=[
+ {id:'gHybrid',name:'🌿 Google Hybrid',layer:L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',{maxZoom:22,maxNativeZoom:20,crossOrigin:true,attribution:'© Google Maps'})},
+ {id:'gSat',name:'🛰️ Google Satelit',layer:L.tileLayer('https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',{maxZoom:22,maxNativeZoom:20,crossOrigin:true,attribution:'© Google Maps'})},
+ {id:'street',name:'🗺️ Street (OSM)',layer:L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:22,maxNativeZoom:19,crossOrigin:true,attribution:'© OpenStreetMap'})},
+ {id:'esriSat',name:'🛰️ Esri Satelit',layer:L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:22,maxNativeZoom:19,crossOrigin:true,attribution:'Tiles © Esri'})}
+];
+let currentLayerIdx=0;
 
-function setLayer(useSatellite){
- satellite=useSatellite;
- if(satellite){map.removeLayer(street);imagery.addTo(map);$('#layerBtn').textContent='🗺️ Street';}
- else{map.removeLayer(imagery);street.addTo(map);$('#layerBtn').textContent='🛰️ Satellite';}
+const map=L.map('map',{zoomControl:true,maxZoom:22,preferCanvas:true}).setView([-7.8,110.37],13);
+tileLayers[0].layer.addTo(map);
+
+function setLayer(idx){
+ map.removeLayer(tileLayers[currentLayerIdx].layer);
+ currentLayerIdx=idx;
+ tileLayers[currentLayerIdx].layer.addTo(map);
+ const nextIdx=(currentLayerIdx+1)%tileLayers.length;
+ $('#layerBtn').textContent=tileLayers[nextIdx].name;
+ toast('Layer: '+tileLayers[currentLayerIdx].name.replace(/^..\s*/,''));
 }
-$('#layerBtn').onclick=()=>setLayer(!satellite);
+$('#layerBtn').textContent=tileLayers[1].name;
+$('#layerBtn').onclick=()=>setLayer((currentLayerIdx+1)%tileLayers.length);
 
 map.on('click',e=>{
  if(locked){toast('Survey sedang dikunci');return}
@@ -139,51 +155,112 @@ function updateLiveMarker(){
  const ll=[live.lat,live.lng];
  if(!liveMarker){
   liveMarker=L.marker(ll,{icon:surveyIcon,draggable:!locked,zIndexOffset:2000}).addTo(map);
-  // Deliberately no permanent tooltip here: the title would obstruct the exact point
-  // while the user is still positioning the marker.
-  liveMarker.on('dragstart',()=>liveMarker.closeTooltip());
   liveMarker.on('dragend',()=>{
    if(locked)return;
    const q=liveMarker.getLatLng();
    live.lat=q.lat;live.lng=q.lng;live.source='Manual';live.accuracy=null;
+   if(accCircle){map.removeLayer(accCircle);accCircle=null}
    updateLiveInfo();toast('Posisi pin diperbarui');
   });
  }else{
   liveMarker.setLatLng(ll);
   locked?liveMarker.dragging.disable():liveMarker.dragging.enable();
  }
+
+ if(live.source==='GPS'&&live.accuracy!=null){
+  if(!accCircle){
+   accCircle=L.circle(ll,{radius:live.accuracy,color:'#2563eb',weight:1.5,fillOpacity:0.12}).addTo(map);
+  }else{
+   accCircle.setLatLng(ll);
+   accCircle.setRadius(live.accuracy);
+  }
+ }else if(accCircle){
+  map.removeLayer(accCircle);accCircle=null;
+ }
 }
+
 function updateLiveInfo(){
  $('#lat').textContent=live.lat.toFixed(8);
  $('#lng').textContent=live.lng.toFixed(8);
  $('#acc').textContent=live.accuracy==null?'—':'±'+live.accuracy.toFixed(1)+' m';
  $('#alt').textContent=live.alt==null?'—':live.alt.toFixed(1)+' m';
- $('#badge').textContent=live.source==='GPS'?(live.accuracy?'GPS ±'+live.accuracy.toFixed(1)+' m':'GPS aktif'):'Pin manual';
+ 
+ const badge=$('#badge');
+ badge.classList.remove('acc-good','acc-mod','acc-poor');
+ if(live.source==='GPS'){
+  if(live.accuracy!=null){
+   if(live.accuracy<=5){
+    badge.textContent='🟢 GPS Akurat ±'+live.accuracy.toFixed(1)+'m';
+    badge.classList.add('acc-good');
+   }else if(live.accuracy<=15){
+    badge.textContent='🟡 GPS Sedang ±'+live.accuracy.toFixed(1)+'m';
+    badge.classList.add('acc-mod');
+   }else{
+    badge.textContent='🔴 GPS Kasaran ±'+live.accuracy.toFixed(1)+'m (Tunggu/Sesuaikan)';
+    badge.classList.add('acc-poor');
+   }
+  }else{
+   badge.textContent='GPS aktif';
+  }
+ }else{
+  badge.textContent='Pin manual';
+ }
  $('#savePoint').disabled=locked;$('#copy').disabled=false;$('#maps').disabled=false;
  updateLiveMarker();
 }
+
 function setLive(lat,lng,accuracy=null,source='GPS',alt=null){
  live={lat,lng,accuracy,source,alt};updateLiveInfo();map.setView([lat,lng],Math.max(map.getZoom(),19));
 }
-function locate(){
+
+function startGpsWatch(){
  if(!navigator.geolocation)return toast('Browser tidak mendukung GPS');
  $('#badge').textContent='Mencari GPS…';
- navigator.geolocation.getCurrentPosition(p=>{
-  setLive(p.coords.latitude,p.coords.longitude,p.coords.accuracy,'GPS',p.coords.altitude);
- },e=>{toast('GPS gagal: '+e.message);$('#badge').textContent='GPS gagal'},{
-  enableHighAccuracy:true,timeout:20000,maximumAge:0
- });
+ if(watchId!=null)navigator.geolocation.clearWatch(watchId);
+ watchId=navigator.geolocation.watchPosition(p=>{
+  if(!live||live.source!=='GPS'||live.accuracy==null||p.coords.accuracy<=live.accuracy+2){
+   setLive(p.coords.latitude,p.coords.longitude,p.coords.accuracy,'GPS',p.coords.altitude);
+  }
+ },e=>{
+  toast('GPS error: '+e.message);$('#badge').textContent='GPS gagal';
+ },{enableHighAccuracy:true,timeout:20000,maximumAge:0});
 }
+
+function locate(){
+ startGpsWatch();
+ toast('GPS realtime aktif — menunggu akurasi terbaik');
+}
+
 function persist(){
  if(current){current.updatedAt=current.updatedAt||new Date().toISOString();db.surveys=db.surveys.filter(x=>x.id!==current.id);db.surveys.unshift(current);db.currentId=current.id}
  localStorage.setItem(KEY,JSON.stringify(db));renderHistory();
 }
+
 function clearMap(){
  markers.forEach(m=>map.removeLayer(m));markers=[];
+ edgeMarkers.forEach(m=>map.removeLayer(m));edgeMarkers=[];
  if(polygon){map.removeLayer(polygon);polygon=null}
 }
+
 function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]))}
 function popup(p){return '<b>'+esc(p.title)+'</b><br>'+p.lat.toFixed(8)+', '+p.lng.toFixed(8)+'<br>±'+(p.accuracy==null?'—':p.accuracy.toFixed(1)+' m')}
+
+function getSegments(pts){
+ if(!pts||pts.length<2)return[];
+ const segs=[];
+ for(let i=0;i<pts.length-1;i++){
+  const p1=pts[i],p2=pts[i+1];
+  const d=turf.distance([p1.lng,p1.lat],[p2.lng,p2.lat],{units:'meters'});
+  segs.push({from:p1.title,to:p2.title,dist:d,midLat:(p1.lat+p2.lat)/2,midLng:(p1.lng+p2.lng)/2});
+ }
+ if(pts.length>=3){
+  const pLast=pts[pts.length-1],pFirst=pts[0];
+  const d=turf.distance([pLast.lng,pLast.lat],[pFirst.lng,pFirst.lat],{units:'meters'});
+  segs.push({from:pLast.title,to:pFirst.title,dist:d,midLat:(pLast.lat+pFirst.lat)/2,midLng:(pLast.lng+pFirst.lng)/2,closing:true});
+ }
+ return segs;
+}
+
 function render(){
  if(!current)return;
  $('#surveyTitle').textContent=current.title;
@@ -196,7 +273,9 @@ function render(){
  <div class="item"><div><strong>${i+1}. ${esc(p.title)}</strong>
  <div class="muted">${p.lat.toFixed(8)}, ${p.lng.toFixed(8)} · ±${p.accuracy==null?'—':p.accuracy.toFixed(1)+' m'}${p.adjusted?' · adjusted':''}</div></div>
  <div class="item-actions"><button class="btn" data-focus="${p.id}">🎯</button><button class="btn" data-edit="${p.id}">✏️</button><button class="btn danger" data-del="${p.id}">🗑️</button></div></div>`).join('');
+
  clearMap();
+
  current.points.forEach(p=>{
   const m=L.marker([p.lat,p.lng],{draggable:!locked,icon:surveyIcon}).addTo(map)
    .bindTooltip(p.title,{permanent:true,direction:'top'}).bindPopup(popup(p));
@@ -209,9 +288,33 @@ function render(){
   });
   markers.push(m);
  });
+
+ const segs=getSegments(current.points);
+
  if(current.points.length>=3){
-  polygon=L.polygon(current.points.map(p=>[p.lat,p.lng]),{color:'#111827',weight:3,fillOpacity:.18}).addTo(map);
+  polygon=L.polygon(current.points.map(p=>[p.lat,p.lng]),{color:'#1d4ed8',weight:3,fillOpacity:.18}).addTo(map);
  }
+
+ segs.forEach(s=>{
+  const labelText=formatDist(s.dist);
+  const icon=L.divIcon({
+   className:'',
+   html:`<div class="edge-label-icon">${labelText}</div>`,
+   iconSize:[60,20],
+   iconAnchor:[30,10]
+  });
+  const em=L.marker([s.midLat,s.midLng],{icon,interactive:false,zIndexOffset:1000}).addTo(map);
+  edgeMarkers.push(em);
+ });
+
+ if(segs.length>0){
+  $('#segmentList').innerHTML=segs.map(s=>`
+   <div class="seg-item"><strong>${esc(s.from)} ➔ ${esc(s.to)}</strong><div>${formatDist(s.dist)}</div></div>
+  `).join('');
+ }else{
+  $('#segmentList').innerHTML='<div class="muted">Tambah minimal 2 titik untuk melihat jarak segmen.</div>';
+ }
+
  if(current.area){
   $('#area').textContent=formatArea(current.area);$('#perimeter').textContent=formatDist(current.perimeter);
   $('#areaCard').classList.remove('hidden');
@@ -222,6 +325,9 @@ function formatDist(d){return d<1000?d.toFixed(1)+' m':(d/1000).toFixed(3)+' km'
 
 function savePoint(){
  if(!live||locked)return;
+ if(live.source==='GPS'&&live.accuracy&&live.accuracy>15){
+  toast('Perhatian: Akurasi GPS kasaran (±'+live.accuracy.toFixed(1)+'m). Geser pin jika kurang pas.');
+ }
  modalMode='point';$('#modalTitle').textContent='Simpan Titik';
  $('#nameLabel').classList.add('hidden');$('#nameInput').classList.add('hidden');
  $('#pointLabel').classList.remove('hidden');$('#pointInput').classList.remove('hidden');
@@ -241,6 +347,7 @@ function confirmModal(){
  const p={id:crypto.randomUUID(),title,lat:live.lat,lng:live.lng,accuracy:live.accuracy,altitude:live.alt,source:live.source,adjusted:live.source==='Manual',createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};
  current.points.push(p);current.area=null;current.perimeter=null;current.updatedAt=p.createdAt;
  if(liveMarker){map.removeLayer(liveMarker);liveMarker=null}live=null;
+ if(accCircle){map.removeLayer(accCircle);accCircle=null}
  closeModal();render();persist();toast(title+' tersimpan');
 }
 function editPoint(id){
@@ -278,13 +385,13 @@ async function exportImage(){
  const hide=mapEl.querySelectorAll('.leaflet-control,.locate,.map-btn,.badge');
  hide.forEach(e=>e.style.visibility='hidden');
 
+ const overlayPane=mapEl.querySelector('.leaflet-overlay-pane');
+ if(overlayPane)overlayPane.style.visibility='hidden';
+
  let exportOverlay=null;
  try{
-  // Ensure the current map view and imagery have a moment to settle.
   await new Promise(r=>setTimeout(r,250));
 
-  // Explicitly paint the polygon on top of the map before html2canvas.
-  // This avoids browser-dependent Leaflet SVG capture issues.
   if(current.points.length>=3){
    exportOverlay=document.createElement('canvas');
    const rect=mapEl.getBoundingClientRect();
@@ -307,6 +414,21 @@ async function exportImage(){
    ec.strokeStyle='#1d4ed8';
    ec.stroke();
 
+   const segs=getSegments(current.points);
+   ec.font='700 11px system-ui';
+   segs.forEach(s=>{
+    const ptMid=map.latLngToContainerPoint([s.midLat,s.midLng]);
+    const label=formatDist(s.dist);
+    const tw=ec.measureText(label).width;
+    ec.fillStyle='rgba(255,255,255,0.92)';
+    ec.strokeStyle='#1e293b';
+    ec.lineWidth=1;
+    ec.fillRect(ptMid.x-tw/2-5,ptMid.y-10,tw+10,18);
+    ec.strokeRect(ptMid.x-tw/2-5,ptMid.y-10,tw+10,18);
+    ec.fillStyle='#0f172a';
+    ec.fillText(label,ptMid.x-tw/2,ptMid.y+3);
+   });
+
    ec.fillStyle='#fff';
    ec.strokeStyle='#1d4ed8';
    pts.forEach(pt=>{
@@ -318,7 +440,7 @@ async function exportImage(){
    useCORS:true,allowTaint:false,backgroundColor:'#fff',scale:2,logging:false
   });
 
-  // Professional landscape report.
+  const segs=getSegments(current.points);
   const MAP_W=1000;
   const mapRatio=mapEl.clientHeight/Math.max(1,mapEl.clientWidth);
   const MAP_H=Math.round(MAP_W*mapRatio);
@@ -326,7 +448,9 @@ async function exportImage(){
   const PAD=46;
   const HEADER_H=155;
   const FOOTER_H=78;
-  const TABLE_H=Math.max(260,current.points.length*58+95);
+  const POINT_TABLE_H=current.points.length*58+95;
+  const SEG_TABLE_H=segs.length>0?(segs.length*48+80):0;
+  const TABLE_H=Math.max(260,POINT_TABLE_H+SEG_TABLE_H);
   const W=PAD+MAP_W+34+INFO_W+PAD;
   const H=HEADER_H+MAP_H+34+TABLE_H+FOOTER_H;
 
@@ -335,10 +459,8 @@ async function exportImage(){
   const x=c.getContext('2d');
   x.scale(2,2);
 
-  // Background
   x.fillStyle='#f8fafc';x.fillRect(0,0,W,H);
 
-  // Header
   x.fillStyle='#0f172a';x.fillRect(0,0,W,HEADER_H);
   x.fillStyle='#fff';x.font='700 34px system-ui,-apple-system,sans-serif';
   x.fillText('GPS LAND SURVEY',PAD,52);
@@ -349,16 +471,22 @@ async function exportImage(){
   x.fillText('Dokumentasi pengukuran berbasis GPS · WGS84',PAD,120);
   x.textAlign='right';
   x.fillText(new Date(current.updatedAt||Date.now()).toLocaleString('id-ID'),W-PAD,52);
-  x.fillText((satellite?'Satellite / World Imagery':'Street Map / OpenStreetMap'),W-PAD,78);
+  x.fillText(tileLayers[currentLayerIdx].name.replace(/^..\s*/,''),W-PAD,78);
   x.fillText('Generated from GPS Land Survey',W-PAD,104);
   x.textAlign='left';
 
-  // Map frame
   const mx=PAD,my=HEADER_H;
   x.fillStyle='#fff';x.fillRect(mx-2,my-2,MAP_W+4,MAP_H+4);
   x.drawImage(shot,mx,my,MAP_W,MAP_H);
 
-  // Draw export-only map annotations: north arrow + scale bar.
+  const nx=mx+MAP_W-66, ny=my+68;
+  x.save();x.translate(nx,ny);
+  x.fillStyle='#fff';x.strokeStyle='#111827';x.lineWidth=2;
+  x.beginPath();x.arc(0,0,30,0,Math.PI*2);x.fill();x.stroke();
+  x.fillStyle='#111827';
+  x.beginPath();x.moveTo(0,-21);x.lineTo(8,12);x.lineTo(0,7);x.lineTo(-8,12);x.closePath();x.fill();
+  x.font='700 15px system-ui';x.textAlign='center';x.fillText('N',0,-37);x.restore();
+
   const center=map.getCenter();
   const zoom=map.getZoom();
   const metersPerPixel=(Math.cos(center.lat*Math.PI/180)*2*Math.PI*6378137)/(256*Math.pow(2,zoom));
@@ -370,23 +498,12 @@ async function exportImage(){
   candidates.forEach(n=>{if(n*pow<=rawMeters)niceMeters=n*pow});
   const scalePx=niceMeters/metersPerPixel;
 
-  // North arrow
-  const nx=mx+MAP_W-66, ny=my+68;
-  x.save();x.translate(nx,ny);
-  x.fillStyle='#fff';x.strokeStyle='#111827';x.lineWidth=2;
-  x.beginPath();x.arc(0,0,30,0,Math.PI*2);x.fill();x.stroke();
-  x.fillStyle='#111827';
-  x.beginPath();x.moveTo(0,-21);x.lineTo(8,12);x.lineTo(0,7);x.lineTo(-8,12);x.closePath();x.fill();
-  x.font='700 15px system-ui';x.textAlign='center';x.fillText('N',0,-37);x.restore();
-
-  // Scale bar
   const sx=mx+28, sy=my+MAP_H-34;
   x.strokeStyle='#111827';x.fillStyle='#111827';x.lineWidth=3;
   x.beginPath();x.moveTo(sx,sy);x.lineTo(sx+scalePx,sy);x.stroke();
   x.lineWidth=2;x.beginPath();x.moveTo(sx,sy-7);x.lineTo(sx,sy+7);x.moveTo(sx+scalePx,sy-7);x.lineTo(sx+scalePx,sy+7);x.stroke();
   x.font='700 13px system-ui';x.fillText(niceMeters>=1000?(niceMeters/1000)+' km':niceMeters.toFixed(0)+' m',sx,sy-13);
 
-  // Info panel
   const ix=PAD+MAP_W+34, iy=HEADER_H;
   x.fillStyle='#fff';x.fillRect(ix,iy,INFO_W,MAP_H);
   x.strokeStyle='#e2e8f0';x.lineWidth=1;x.strokeRect(ix,iy,INFO_W,MAP_H);
@@ -396,8 +513,8 @@ async function exportImage(){
    ['Luas',current.area==null?'Belum dihitung':formatArea(current.area)],
    ['Keliling',current.perimeter==null?'Belum dihitung':formatDist(current.perimeter)],
    ['Jumlah titik',String(current.points.length)],
-   ['Layer',satellite?'Satellite':'Street Map'],
-   ['Koordinat', 'WGS84 · decimal degrees']
+   ['Layer',tileLayers[currentLayerIdx].name.replace(/^..\s*/,'')],
+   ['Koordinat','WGS84 · decimal degrees']
   ];
   let sy2=iy+78;
   summary.forEach(([label,val])=>{
@@ -414,10 +531,9 @@ async function exportImage(){
   const noteLines=wrapCanvasText(x,note,INFO_W-50,20);
   noteLines.slice(0,5).forEach((line,j)=>x.fillText(line,ix+25,sy2+24+j*19));
 
-  // Point table
   const ty=HEADER_H+MAP_H+34;
-  x.fillStyle='#fff';x.fillRect(PAD,ty,W-PAD*2,TABLE_H);
-  x.strokeStyle='#e2e8f0';x.lineWidth=1;x.strokeRect(PAD,ty,W-PAD*2,TABLE_H);
+  x.fillStyle='#fff';x.fillRect(PAD,ty,W-PAD*2,POINT_TABLE_H);
+  x.strokeStyle='#e2e8f0';x.lineWidth=1;x.strokeRect(PAD,ty,W-PAD*2,POINT_TABLE_H);
   x.fillStyle='#0f172a';x.font='700 20px system-ui';x.fillText('DAFTAR KOORDINAT TITIK',PAD+20,ty+32);
 
   const cols=[PAD+20,PAD+70,PAD+355,PAD+595,PAD+835,PAD+1045];
@@ -437,7 +553,28 @@ async function exportImage(){
    x.fillText((p.source||'Map')+(p.adjusted?' · adjusted':''),cols[5],yy);
   });
 
-  // Footer
+  if(segs.length>0){
+   const sty=ty+POINT_TABLE_H+20;
+   x.fillStyle='#fff';x.fillRect(PAD,sty,W-PAD*2,SEG_TABLE_H);
+   x.strokeStyle='#e2e8f0';x.lineWidth=1;x.strokeRect(PAD,sty,W-PAD*2,SEG_TABLE_H);
+   x.fillStyle='#0f172a';x.font='700 20px system-ui';x.fillText('JARAK PER SISI (SEGMEN)',PAD+20,sty+32);
+
+   const scols=[PAD+20,PAD+80,PAD+380,PAD+680];
+   const sheaders=['No','Segmen Titik','Jarak Segmen','Tipe'];
+   x.font='700 12px system-ui';x.fillStyle='#64748b';
+   sheaders.forEach((h,i)=>x.fillText(h,scols[i],sty+61));
+   x.strokeStyle='#cbd5e1';x.beginPath();x.moveTo(PAD+20,sty+72);x.lineTo(W-PAD-20,sty+72);x.stroke();
+
+   segs.forEach((s,i)=>{
+    const syy=sty+95+i*48;
+    if(i%2===0){x.fillStyle='#f8fafc';x.fillRect(PAD+12,syy-18,W-PAD*2-24,40)}
+    x.fillStyle='#0f172a';x.font='700 13px system-ui';x.fillText(String(i+1),scols[0],syy);
+    x.font='600 13px system-ui';x.fillText(`${s.from} ➔ ${s.to}`,scols[1],syy);
+    x.font='700 13px system-ui';x.fillStyle='#1d4ed8';x.fillText(formatDist(s.dist),scols[2],syy);
+    x.fillStyle='#64748b';x.font='12px system-ui';x.fillText(s.closing?'Sisi Penutup':'Sisi Batas',scols[3],syy);
+   });
+  }
+
   const fy=H-FOOTER_H;
   x.fillStyle='#0f172a';x.fillRect(0,fy,W,FOOTER_H);
   x.fillStyle='#cbd5e1';x.font='12px system-ui';
@@ -452,6 +589,7 @@ async function exportImage(){
   toast('Gagal membuat laporan: '+(e.message||'unknown error'));
  }finally{
   if(exportOverlay&&exportOverlay.parentNode)exportOverlay.parentNode.removeChild(exportOverlay);
+  if(overlayPane)overlayPane.style.visibility='';
   hide.forEach(e=>e.style.visibility='');
  }
 }
@@ -505,6 +643,12 @@ $('#history').onclick=e=>{
 };
 
 if(!current)newSurvey();else{db.currentId=current.id;render();renderHistory()}
+
+if('serviceWorker' in navigator){
+ window.addEventListener('load',()=>{
+  navigator.serviceWorker.register('./sw.js').catch(err=>console.log('SW registration failed:',err));
+ });
+}
 </script>
 </body>
 </html>
